@@ -1,1 +1,3 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts
+@chainlink/contracts/=lib/foundry-chainlink-toolkit/contracts/
+foundry-chainlink-toolkit/=lib/foundry-chainlink-toolkit/
