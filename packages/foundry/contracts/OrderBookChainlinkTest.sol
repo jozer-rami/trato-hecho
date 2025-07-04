@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@chainlink/contracts/src/v0.8/functions/FunctionsClient.sol";
-import "@chainlink/contracts/src/v0.8/functions/FunctionsRequest.sol";
+import "@chainlink/contracts/v0.8/functions/FunctionsClient.sol";
+import "@chainlink/contracts/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
