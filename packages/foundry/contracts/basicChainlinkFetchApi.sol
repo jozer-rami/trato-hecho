@@ -3,14 +3,9 @@ pragma solidity 0.8.20;
 
 // Deploy on Arbitrum Sepolia
 
-import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
-import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
-import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
-
-/**
- * Request testnet LINK and ETH here: https://faucets.chain.link/
- * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/resources/link-token-contracts/
- */
+import {FunctionsClient} from "@chainlink/v0.8/functions/v1_0_0/FunctionsClient.sol";
+import {ConfirmedOwner} from "@chainlink/v0.8/shared/access/ConfirmedOwner.sol";
+import {FunctionsRequest} from "@chainlink/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
 /**
  * @title GettingStartedFunctionsConsumer
@@ -38,8 +33,8 @@ contract GettingStartedFunctionsConsumer is FunctionsClient, ConfirmedOwner {
 
     // Hardcoded for Ethereum Sepolia
     // Supported networks https://docs.chain.link/chainlink-functions/supported-networks
-    address router = 0x234a5fb5Bd614a7AA2FfAB244D603abFA0Ac5C5C;
-    bytes32 donID = 0x66756e2d617262697472756d2d7365706f6c69612d3100000000000000000000;
+    address router = 0xb83E47C2bC239B3bf370bc41e1459A34b41238D0;
+    bytes32 donID = 0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000;
 
     //Callback gas limit
     uint32 gasLimit = 300000;
@@ -49,12 +44,13 @@ contract GettingStartedFunctionsConsumer is FunctionsClient, ConfirmedOwner {
     // Documentation: https://swapi.dev/documentation#people
     string source =
         "const referenceId = args[0];"
+        "const apiKey = args[1];"
         "const bankingApiUrl = 'https://bnb-bank-api.ngrok.app';"
         "const apiRequest = Functions.makeHttpRequest({"
             "url: `${bankingApiUrl}/DirectDebit/GetTransactionOutgoing/${referenceId}`,"
             "method: 'GET',"
             "headers: {"
-            "Authorization: `Bearer ${secrets.apiKey}`,"
+            "Authorization: `Bearer ${apiKey}`,"
             "},"
         "});"
         "const apiResponse = await apiRequest;"

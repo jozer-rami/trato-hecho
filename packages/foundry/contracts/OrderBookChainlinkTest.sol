@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
-import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
+import {FunctionsClient} from "@chainlink/v0.8/functions/v1_0_0/FunctionsClient.sol";
+import {FunctionsRequest} from "@chainlink/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
 /**
  * @title OrderBookChainlinkTest - Corrected P2P Flow
@@ -329,26 +329,26 @@ contract OrderBookChainlinkTest is FunctionsClient {
 
     // ============ Mock Functions for Testing ============
 
-    /**
-     * @notice Mock function to create and accept order in one step (for testing)
-     */
-    function mockCreateAcceptedOrder(
-        address seller,
-        address buyer,
-        uint256 amountUSDC,
-        uint256 priceBOB,
-        uint256 deadline
-    ) external returns (uint256 orderId) {
-        // Seller creates order
-        vm.prank(seller);
-        orderId = this.createSellOrder(amountUSDC, priceBOB, deadline);
+    // /**
+    //  * @notice Mock function to create and accept order in one step (for testing)
+    //  */
+    // function mockCreateAcceptedOrder(
+    //     address seller,
+    //     address buyer,
+    //     uint256 amountUSDC,
+    //     uint256 priceBOB,
+    //     uint256 deadline
+    // ) external returns (uint256 orderId) {
+    //     // Seller creates order
+    //     vm.prank(seller);
+    //     orderId = this.createSellOrder(amountUSDC, priceBOB, deadline);
         
-        // Buyer accepts order
-        vm.prank(buyer);
-        this.acceptOrder(orderId);
+    //     // Buyer accepts order
+    //     vm.prank(buyer);
+    //     this.acceptOrder(orderId);
         
-        return orderId;
-    }
+    //     return orderId;
+    // }
 
      // ============ View Functions for Marketplace ============
 
