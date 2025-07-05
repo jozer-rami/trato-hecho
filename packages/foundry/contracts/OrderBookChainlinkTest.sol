@@ -1,271 +1,317 @@
 // packages/foundry/contracts/OrderBookChainlinkTest.sol
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.19;
 
-import "@chainlink/contracts/v0.8/functions/FunctionsClient.sol";
-import "@chainlink/contracts/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
+import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
 
 /**
- * @title OrderBookChainlinkTest
- * @notice Simplified OrderBook contract for testing Chainlink Functions integration
- * @dev Focuses on payment verification functionality with mocked orders
+ * @title OrderBookChainlinkTest - Corrected P2P Flow
+ * @notice P2P exchange where sellers create orders and unknown buyers accept them
+ * @dev Fixed to follow proper P2P marketplace pattern
  */
-contract OrderBookChainlinkTest is FunctionsClient, Ownable {
+contract OrderBookChainlinkTest is FunctionsClient {
     using FunctionsRequest for FunctionsRequest.Request;
 
-    // Chainlink Functions configuration
+    // ============ Basic Configuration ============
+    address public owner;
     uint64 public subscriptionId;
-    uint32 public gasLimit;
-    bytes32 public donID;
-    string public sourceCode;
-    
-    // Order structure (simplified for testing)
+
+    // Hardcoded Chainlink configuration (Arbitrum Sepolia)
+    address constant router = 0xb83E47C2bC239B3bf370bc41e1459A34b41238D0;
+    uint32 constant gasLimit = 3000000;
+    bytes32 constant donID = 0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000;
+
+    // ============ Order Management ============
     struct Order {
         uint256 id;
-        address seller;
-        address buyer;
-        uint256 amountUSDC;
-        uint256 priceBOB;
+        address seller;         // ✅ Known: person creating the order
+        address buyer;          // ✅ Initially address(0), set when someone accepts
+        uint256 amountUSDC;     // ✅ How much USDC seller wants to sell
+        uint256 priceBOB;       // ✅ How much BOB seller wants in return
         OrderStatus status;
-        bytes32 chainlinkRequestId;
         uint256 createdAt;
+        uint256 deadline;
     }
     
     enum OrderStatus {
-        Created,
-        Accepted,
-        PaymentPending,
-        PaymentVerified,
-        Completed,
-        Cancelled,
-        Failed
+        Created,        // ✅ Seller posted order, no buyer yet
+        Accepted,       // ✅ Someone accepted and became the buyer
+        PaymentPending, // ✅ Buyer payment verification in progress
+        PaymentVerified,// ✅ Chainlink confirmed buyer paid
+        Completed,      // ✅ USDC transferred to buyer
+        Cancelled,      // ✅ Seller cancelled before acceptance
+        Expired,        // ✅ Order expired
+        Failed          // ✅ Payment verification failed
     }
-    
-    // Storage
+
+    // ============ Request Tracking ============
+    struct RequestIdentity {
+        uint256 orderId;
+        address requester;
+        string bankingApiUrl;
+        string expectedAmount;
+    }
+
     mapping(uint256 => Order) public orders;
-    mapping(bytes32 => uint256) public requestIdToOrderId;
-    mapping(bytes32 => bool) public pendingRequests;
+    mapping(bytes32 => RequestIdentity) public requestToOrder;
+    bytes32[] public requestIds;
     uint256 public nextOrderId = 1;
-    
-    // Events
-    event OrderMocked(uint256 indexed orderId, address indexed seller, address indexed buyer, uint256 amountUSDC, uint256 priceBOB);
-    event PaymentVerificationRequested(uint256 indexed orderId, bytes32 indexed requestId, string bankingApiUrl);
-    event PaymentVerificationCompleted(uint256 indexed orderId, bytes32 indexed requestId, bool verified);
-    event PaymentVerificationFailed(uint256 indexed orderId, bytes32 indexed requestId, string reason);
-    event OrderStatusChanged(uint256 indexed orderId, OrderStatus oldStatus, OrderStatus newStatus);
-    
-    // Errors
-    error OrderNotFound();
-    error OrderNotAccepted();
-    error OrderExpired();
-    error RequestAlreadyPending();
-    error InvalidRequest();
-    error UnknownRequest();
 
-    constructor() FunctionsClient(address(0)) {
-        // Will be initialized in the deploy script
+    // ============ JavaScript Source ============
+    string public source = 
+        "const orderId = args[0];"
+        "const bankingApiUrl = args[1];"
+        "const expectedAmount = args[2];"
+        "const buyerAccount = args[3];"
+        ""
+        "if (!secrets.apiKey) {"
+        "  throw Error('Missing API key');"
+        "};"
+        ""
+        "const apiRequest = Functions.makeHttpRequest({"
+        "  url: bankingApiUrl + '/api/v1/transfers/verify',"
+        "  method: 'POST',"
+        "  headers: {"
+        "    'Authorization': 'Bearer ' + secrets.apiKey,"
+        "    'Content-Type': 'application/json'"
+        "  },"
+        "  data: {"
+        "    orderId: orderId,"
+        "    expectedAmount: expectedAmount,"
+        "    buyerAccount: buyerAccount"
+        "  }"
+        "});"
+        ""
+        "const apiResponse = await apiRequest;"
+        ""
+        "if (apiResponse.error) {"
+        "  throw Error('Banking API request failed');"
+        "};"
+        ""
+        "const responseData = apiResponse.data;"
+        "const result = (responseData.confirmed && "
+        "               responseData.orderId == orderId && "
+        "               responseData.amount >= parseFloat(expectedAmount)) ? 1 : 0;"
+        ""
+        "return Functions.encodeUint256(result);";
+
+    // ============ Events ============
+    event OrderCreated(uint256 indexed orderId, address indexed seller, uint256 amountUSDC, uint256 priceBOB);
+    event OrderAccepted(uint256 indexed orderId, address indexed buyer, address indexed seller);
+    event PaymentVerificationRequested(uint256 indexed orderId, bytes32 indexed requestId, address indexed buyer);
+    event PaymentVerified(uint256 indexed orderId, bool verified);
+    event OrderCompleted(uint256 indexed orderId, address indexed seller, address indexed buyer, uint256 amount);
+    event OrderCancelled(uint256 indexed orderId, address indexed seller);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
     }
 
-    function initialize(
-        address _router,
-        uint64 _subscriptionId,
-        bytes32 _donID,
-        string memory _sourceCode
-    ) external onlyOwner {
-        _setRouter(_router);
+    constructor(uint64 _subscriptionId) FunctionsClient(router) {
+        owner = msg.sender;
         subscriptionId = _subscriptionId;
-        donID = _donID;
-        gasLimit = 300000;
-        sourceCode = _sourceCode;
     }
+
+    // ============ CORRECTED Order Flow ============
 
     /**
-     * @notice Mock order creation for testing purposes
-     * @param seller Seller address
-     * @param buyer Buyer address  
-     * @param amountUSDC Amount of USDC
-     * @param priceBOB Price in BOB currency
-     * @return orderId The created order ID
+     * @notice Seller creates an order to sell USDC for BOB
+     * @dev CORRECTED: Only seller is known, buyer is address(0) initially
+     * @param amountUSDC Amount of USDC seller wants to sell
+     * @param priceBOB Amount of BOB seller wants to receive
+     * @param deadline When this order expires
      */
-    function mockCreateOrder(
-        address seller,
-        address buyer,
+    function createSellOrder(
         uint256 amountUSDC,
-        uint256 priceBOB
+        uint256 priceBOB,
+        uint256 deadline
     ) external returns (uint256 orderId) {
+        require(amountUSDC > 0 && priceBOB > 0, "Invalid amounts");
+        require(deadline > block.timestamp, "Invalid deadline");
+
         orderId = nextOrderId++;
         
         orders[orderId] = Order({
             id: orderId,
-            seller: seller,
-            buyer: buyer,
+            seller: msg.sender,        // ✅ Known: caller is the seller
+            buyer: address(0),         // ✅ Unknown: no buyer yet
             amountUSDC: amountUSDC,
             priceBOB: priceBOB,
-            status: OrderStatus.Accepted, // Start in Accepted state for testing
-            chainlinkRequestId: bytes32(0),
-            createdAt: block.timestamp
+            status: OrderStatus.Created,
+            createdAt: block.timestamp,
+            deadline: deadline
         });
-        
-        emit OrderMocked(orderId, seller, buyer, amountUSDC, priceBOB);
-        return orderId;
+
+        emit OrderCreated(orderId, msg.sender, amountUSDC, priceBOB);
     }
 
     /**
-     * @notice Request payment verification via Chainlink Functions
-     * @param orderId Order ID to verify payment for
-     * @param bankingApiUrl Banking API URL
-     * @param apiKey API key for authentication
-     * @param expectedAmount Expected transfer amount
-     * @param buyerBankAccount Buyer's bank account identifier
-     * @return requestId Chainlink request ID
+     * @notice Anyone can accept a created order and become the buyer
+     * @dev CORRECTED: This is where buyer gets set
+     * @param orderId The order to accept
+     */
+    function acceptOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+        require(order.id != 0, "Order not found");
+        require(order.status == OrderStatus.Created, "Order not available");
+        require(block.timestamp <= order.deadline, "Order expired");
+        require(msg.sender != order.seller, "Seller cannot accept own order");
+
+        // ✅ NOW we know who the buyer is
+        order.buyer = msg.sender;
+        order.status = OrderStatus.Accepted;
+
+        emit OrderAccepted(orderId, msg.sender, order.seller);
+    }
+
+    /**
+     * @notice Buyer verifies they have made the payment
+     * @dev Only the buyer can trigger payment verification
      */
     function verifyPayment(
         uint256 orderId,
-        string memory bankingApiUrl,
-        string memory apiKey,
-        string memory expectedAmount,
-        string memory buyerBankAccount
+        string calldata bankingApiUrl,
+        string calldata expectedAmount,
+        string calldata buyerAccount
     ) external returns (bytes32 requestId) {
         Order storage order = orders[orderId];
+        require(order.id != 0, "Order not found");
+        require(order.status == OrderStatus.Accepted, "Order not accepted yet");
+        require(msg.sender == order.buyer, "Only buyer can verify payment");
+        require(block.timestamp <= order.deadline, "Order expired");
+
+        // Update status
+        order.status = OrderStatus.PaymentPending;
+
+        // Send Chainlink request
+        requestId = initializeFunctionsRequest(
+            orderId,
+            bankingApiUrl,
+            expectedAmount,
+            buyerAccount,
+            1, // secrets version
+            msg.sender
+        );
+
+        emit PaymentVerificationRequested(orderId, requestId, msg.sender);
+    }
+
+    /**
+     * @notice Complete order - seller transfers USDC to buyer
+     * @dev Only seller can complete after payment verification
+     */
+    function completeOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+        require(order.id != 0, "Order not found");
+        require(order.status == OrderStatus.PaymentVerified, "Payment not verified");
+        require(msg.sender == order.seller, "Only seller can complete order");
+
+        order.status = OrderStatus.Completed;
         
-        if (order.seller == address(0)) revert OrderNotFound();
-        if (order.status != OrderStatus.Accepted) revert OrderNotAccepted();
+        // 💡 In a real implementation, this would transfer USDC tokens
+        // IERC20(usdcToken).transferFrom(order.seller, order.buyer, order.amountUSDC);
         
-        // Check if there's already a pending request for this order
-        if (order.chainlinkRequestId != bytes32(0) && pendingRequests[order.chainlinkRequestId]) {
-            revert RequestAlreadyPending();
-        }
-        
-        // Update order status
-        _updateOrderStatus(orderId, OrderStatus.PaymentPending);
-        
-        // Prepare Chainlink Functions arguments
-        string[] memory args = new string[](5);
-        args[0] = _uint256ToString(orderId);
-        args[1] = bankingApiUrl;
-        args[2] = apiKey;
-        args[3] = expectedAmount;
-        args[4] = buyerBankAccount;
-        
-        // Create Chainlink Functions request
+        emit OrderCompleted(orderId, order.seller, order.buyer, order.amountUSDC);
+    }
+
+    /**
+     * @notice Seller can cancel their order before it's accepted
+     */
+    function cancelOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+        require(order.id != 0, "Order not found");
+        require(msg.sender == order.seller, "Only seller can cancel");
+        require(order.status == OrderStatus.Created, "Can only cancel non-accepted orders");
+
+        order.status = OrderStatus.Cancelled;
+        emit OrderCancelled(orderId, order.seller);
+    }
+
+   
+
+    // ============ Chainlink Functions Implementation ============
+
+    function initializeFunctionsRequest(
+        uint256 orderId,
+        string memory bankingApiUrl,
+        string memory expectedAmount,
+        string memory buyerAccount,
+        uint64 donHostedSecretsVersion,
+        address caller
+    ) internal returns (bytes32) {
         FunctionsRequest.Request memory req;
-        req.initializeRequestForInlineJavaScript(sourceCode);
-        req.setArgs(args);
         
-        // Send request
-        requestId = _sendRequest(
+        string[] memory args = new string[](4);
+        args[0] = uint256ToString(orderId);
+        args[1] = bankingApiUrl;
+        args[2] = expectedAmount;
+        args[3] = buyerAccount;
+
+        if (args.length > 0) req.setArgs(args);
+        req.initializeRequestForInlineJavaScript(source);
+        req.addDONHostedSecrets(0, donHostedSecretsVersion);
+
+        bytes32 requestId = _sendRequest(
             req.encodeCBOR(),
             subscriptionId,
             gasLimit,
             donID
         );
-        
-        // Store request mapping
-        order.chainlinkRequestId = requestId;
-        requestIdToOrderId[requestId] = orderId;
-        pendingRequests[requestId] = true;
-        
-        emit PaymentVerificationRequested(orderId, requestId, bankingApiUrl);
-        
+
+        requestToOrder[requestId] = RequestIdentity(
+            orderId,
+            caller,
+            bankingApiUrl,
+            expectedAmount
+        );
+
         return requestId;
     }
 
-    /**
-     * @notice Chainlink Functions callback
-     * @param requestId Request ID
-     * @param response Response data
-     * @param err Error data
-     */
     function fulfillRequest(
         bytes32 requestId,
         bytes memory response,
         bytes memory err
     ) internal override {
-        // Verify this is a known request
-        uint256 orderId = requestIdToOrderId[requestId];
-        if (orderId == 0) {
-            revert UnknownRequest();
-        }
-        
-        Order storage order = orders[orderId];
-        
-        // Mark request as no longer pending
-        pendingRequests[requestId] = false;
-        
-        // Handle errors
+        RequestIdentity memory identity = requestToOrder[requestId];
+        require(identity.orderId != 0, "Request not found");
+
+        Order storage order = orders[identity.orderId];
+
         if (err.length > 0) {
-            _updateOrderStatus(orderId, OrderStatus.Failed);
-            emit PaymentVerificationFailed(orderId, requestId, string(err));
+            order.status = OrderStatus.Failed;
+            emit PaymentVerified(identity.orderId, false);
             return;
         }
-        
-        // Decode response
-        uint256 result = abi.decode(response, (uint256));
-        bool verified = (result == 1);
-        
-        if (verified) {
-            _updateOrderStatus(orderId, OrderStatus.PaymentVerified);
-        } else {
-            _updateOrderStatus(orderId, OrderStatus.Accepted); // Reset to accepted
-        }
-        
-        emit PaymentVerificationCompleted(orderId, requestId, verified);
+
+        require(uint256(bytes32(response)) == 1, "Payment not verified");
+
+        order.status = OrderStatus.PaymentVerified;
+        emit PaymentVerified(identity.orderId, true);
     }
 
-    /**
-     * @notice Manual completion for testing (simulates UserOp execution)
-     * @param orderId Order ID to complete
-     */
-    function mockCompleteOrder(uint256 orderId) external {
-        Order storage order = orders[orderId];
-        
-        if (order.seller == address(0)) revert OrderNotFound();
-        require(order.status == OrderStatus.PaymentVerified, "Payment not verified");
-        
-        _updateOrderStatus(orderId, OrderStatus.Completed);
-    }
+    // ============ Standard Functions ============
 
-    /**
-     * @notice Get order details
-     * @param orderId Order ID
-     * @return order Order struct
-     */
     function getOrder(uint256 orderId) external view returns (Order memory) {
         return orders[orderId];
     }
 
-    /**
-     * @notice Get order status
-     * @param orderId Order ID
-     * @return status Order status
-     */
     function getOrderStatus(uint256 orderId) external view returns (OrderStatus) {
         return orders[orderId].status;
     }
 
-    /**
-     * @notice Check if request is pending
-     * @param requestId Request ID
-     * @return pending Whether request is pending
-     */
-    function isRequestPending(bytes32 requestId) external view returns (bool) {
-        return pendingRequests[requestId];
+    function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
+        subscriptionId = _subscriptionId;
     }
 
-    // Internal helper functions
-    function _updateOrderStatus(uint256 orderId, OrderStatus newStatus) internal {
-        Order storage order = orders[orderId];
-        OrderStatus oldStatus = order.status;
-        order.status = newStatus;
-        
-        emit OrderStatusChanged(orderId, oldStatus, newStatus);
+    function updateSource(string memory _source) external onlyOwner {
+        source = _source;
     }
 
-    function _uint256ToString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
+    function uint256ToString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) return "0";
         uint256 temp = value;
         uint256 digits;
         while (temp != 0) {
@@ -281,78 +327,109 @@ contract OrderBookChainlinkTest is FunctionsClient, Ownable {
         return string(buffer);
     }
 
-    // Admin functions
-    function updateSourceCode(string memory _sourceCode) external onlyOwner {
-        sourceCode = _sourceCode;
-    }
+    // ============ Mock Functions for Testing ============
 
-    function updateGasLimit(uint32 _gasLimit) external onlyOwner {
-        gasLimit = _gasLimit;
-    }
-
-    function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
-        subscriptionId = _subscriptionId;
-    }
-
-    function updateDonID(bytes32 _donID) external onlyOwner {
-        donID = _donID;
-    }
-
-    receive() external payable {}
-}
-
-/**
- * @title MockFunctionsRouter
- * @notice Mock router for testing Chainlink Functions locally
- */
-contract MockFunctionsRouter {
-    mapping(address => bool) public allowedSenders;
-    
-    event RequestSent(bytes32 indexed requestId, address indexed sender);
-    event ResponseSent(bytes32 indexed requestId, bytes response, bytes err);
-    
-    modifier onlyAllowedSender() {
-        require(allowedSenders[msg.sender], "Sender not allowed");
-        _;
-    }
-    
-    function addAllowedSender(address sender) external {
-        allowedSenders[sender] = true;
-    }
-    
-    function sendRequest(
-        uint64, // subscriptionId
-        bytes calldata, // data
-        uint16, // dataVersion
-        uint32, // callbackGasLimit
-        bytes32 // donID
-    ) external onlyAllowedSender returns (bytes32 requestId) {
-        requestId = keccak256(abi.encodePacked(block.timestamp, msg.sender, block.prevrandao));
+    /**
+     * @notice Mock function to create and accept order in one step (for testing)
+     */
+    function mockCreateAcceptedOrder(
+        address seller,
+        address buyer,
+        uint256 amountUSDC,
+        uint256 priceBOB,
+        uint256 deadline
+    ) external returns (uint256 orderId) {
+        // Seller creates order
+        vm.prank(seller);
+        orderId = this.createSellOrder(amountUSDC, priceBOB, deadline);
         
-        emit RequestSent(requestId, msg.sender);
+        // Buyer accepts order
+        vm.prank(buyer);
+        this.acceptOrder(orderId);
         
-        return requestId;
+        return orderId;
     }
-    
-    // Mock fulfill function for testing
-    function fulfillRequest(
-        address consumer,
-        bytes32 requestId,
-        bytes memory response,
-        bytes memory err
-    ) external {
-        emit ResponseSent(requestId, response, err);
+
+     // ============ View Functions for Marketplace ============
+
+    /**
+     * @notice Get all available orders (for buyers to browse)
+     * @dev Returns orders that can still be accepted
+     */
+    function getAvailableOrders(uint256 limit) external view returns (uint256[] memory orderIds) {
+        uint256 count = 0;
+        uint256 totalOrders = nextOrderId - 1;
         
-        // Call the consumer's fulfillRequest function
-        (bool success,) = consumer.call(
-            abi.encodeWithSignature(
-                "handleOracleFulfillment(bytes32,bytes,bytes)",
-                requestId,
-                response,
-                err
-            )
-        );
+        // Count available orders
+        for (uint256 i = 1; i <= totalOrders && count < limit; i++) {
+            if (orders[i].status == OrderStatus.Created && 
+                block.timestamp <= orders[i].deadline) {
+                count++;
+            }
+        }
         
-        require(success, "Consumer call failed");
+        orderIds = new uint256[](count);
+        uint256 index = 0;
+        
+        // Fill array with available order IDs (newest first)
+        for (uint256 i = totalOrders; i >= 1 && index < count; i--) {
+            if (orders[i].status == OrderStatus.Created && 
+                block.timestamp <= orders[i].deadline) {
+                orderIds[index] = i;
+                index++;
+            }
+        }
+    }
+
+    /**
+     * @notice Get orders by seller (for sellers to manage their orders)
+     */
+    function getOrdersBySeller(address seller, uint256 limit) external view returns (uint256[] memory orderIds) {
+        uint256 count = 0;
+        uint256 totalOrders = nextOrderId - 1;
+        
+        // Count seller's orders
+        for (uint256 i = 1; i <= totalOrders && count < limit; i++) {
+            if (orders[i].seller == seller) {
+                count++;
+            }
+        }
+        
+        orderIds = new uint256[](count);
+        uint256 index = 0;
+        
+        // Fill array
+        for (uint256 i = totalOrders; i >= 1 && index < count; i--) {
+            if (orders[i].seller == seller) {
+                orderIds[index] = i;
+                index++;
+            }
+        }
+    }
+
+    /**
+     * @notice Get orders by buyer (for buyers to track their purchases)
+     */
+    function getOrdersByBuyer(address buyer, uint256 limit) external view returns (uint256[] memory orderIds) {
+        uint256 count = 0;
+        uint256 totalOrders = nextOrderId - 1;
+        
+        // Count buyer's orders
+        for (uint256 i = 1; i <= totalOrders && count < limit; i++) {
+            if (orders[i].buyer == buyer) {
+                count++;
+            }
+        }
+        
+        orderIds = new uint256[](count);
+        uint256 index = 0;
+        
+        // Fill array
+        for (uint256 i = totalOrders; i >= 1 && index < count; i--) {
+            if (orders[i].buyer == buyer) {
+                orderIds[index] = i;
+                index++;
+            }
+        }
     }
 }
