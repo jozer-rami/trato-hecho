@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 
-// Deploy on Arbitrum Sepolia
+// Deploy on Ethereum Sepolia
 
 import {FunctionsClient} from "@chainlink/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import {ConfirmedOwner} from "@chainlink/v0.8/shared/access/ConfirmedOwner.sol";
@@ -56,9 +56,9 @@ contract TratoHechoP2P is FunctionsClient, ConfirmedOwner {
     IERC20 public immutable usdcToken;
 
     // Chainlink Functions configuration
-    // Arbitrum Sepolia router
-    address constant router = 0x234a5fb5Bd614a7AA2FfAB244D603abFA0Ac5C5C;
-    bytes32 constant donID = 0x66756e2d617262697472756d2d7365706f6c69612d3100000000000000000000;
+    // Ethereum Sepolia router
+    address constant router = 0xb83E47C2bC239B3bf370bc41e1459A34b41238D0;
+    bytes32 constant donID = 0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000;
     uint32 public gasLimit = 300000;
 
     // Simplified JavaScript source code for banking verification
@@ -162,7 +162,7 @@ contract TratoHechoP2P is FunctionsClient, ConfirmedOwner {
      * @notice Constructor
      */
     constructor() FunctionsClient(router) ConfirmedOwner(msg.sender) {
-        usdcToken = IERC20(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238);
+        usdcToken = IERC20(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238); // USDC on Ethereum Sepolia
     }
 
     /**
