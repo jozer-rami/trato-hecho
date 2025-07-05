@@ -3,7 +3,7 @@ pragma solidity 0.8.20;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/TratoHechoP2P.sol";
+import "../contracts/TratoHechoP2P.sol";
 
 // Mock USDC contract for testing
 contract MockUSDC {
@@ -558,7 +558,7 @@ contract TratoHechoP2PTest is Test {
         
         // Alice tries to complete without approval
         vm.prank(alice);
-        vm.expectRevert("USDC transfer failed");
+        vm.expectRevert("Insufficient allowance");
         p2p.completeOrder(orderId);
     }
 
@@ -766,8 +766,8 @@ contract TratoHechoP2PTest is Test {
         // Alice creates multiple orders
         vm.startPrank(alice);
         uint256 order1 = p2p.createSellOrder(100 * 10**6, 1000 * 10**2, block.timestamp + ORDER_DURATION);
-        uint256 order2 = p2p.createSellOrder(200 * 10**6, 2200 * 10**2, block.timestamp + ORDER_DURATION);
-        uint256 order3 = p2p.createSellOrder(50 * 10**6, 550 * 10**2, block.timestamp + ORDER_DURATION);
+        p2p.createSellOrder(200 * 10**6, 2200 * 10**2, block.timestamp + ORDER_DURATION);
+        p2p.createSellOrder(50 * 10**6, 550 * 10**2, block.timestamp + ORDER_DURATION);
         vm.stopPrank();
         
         // Charlie creates an order
@@ -793,33 +793,41 @@ contract TratoHechoP2PTest is Test {
         console.log("Multiple orders scenario working correctly");
     }
 
-    function testFailureRecoveryScenario() public {
+    function test_RecoveryScenario_WhenPaymentFails() public {
         console.log("=== Testing Failure Recovery Scenario ===");
         
         // 1. Alice creates order
         vm.prank(alice);
         uint256 orderId = p2p.createSellOrder(USDC_AMOUNT, BOB_PRICE, block.timestamp + ORDER_DURATION);
+        console.log("Created order ID:", orderId);
         
         // 2. Bob accepts order
         vm.prank(bob);
         p2p.acceptOrder(orderId);
+        console.log("Bob accepted order");
         
         // 3. Payment verification fails
         vm.prank(bob);
         p2p.mockVerifyPayment(orderId, false);
+        console.log("Payment verification failed");
         
         // 4. Verify order is marked as failed
         TestableTratoHechoP2P.Order memory order = p2p.getOrder(orderId);
-        assertTrue(order.status == TestableTratoHechoP2P.OrderStatus.Failed);
+        assertTrue(order.status == TestableTratoHechoP2P.OrderStatus.Failed, "Order should be marked as failed");
+        console.log("Order status verified as failed");
         
         // 5. Alice creates a new order (old one is failed)
         vm.prank(alice);
         uint256 newOrderId = p2p.createSellOrder(USDC_AMOUNT, BOB_PRICE, block.timestamp + ORDER_DURATION);
+        console.log("Created new order ID:", newOrderId);
         
         // 6. Verify new order is available
         uint256[] memory availableOrders = p2p.getAvailableOrders(10);
-        assertEq(availableOrders.length, 1);
-        assertEq(availableOrders[0], newOrderId);
+        console.log("Available orders count:", availableOrders.length);
+        console.log("Expected new order ID:", newOrderId);
+        
+        assertEq(availableOrders.length, 1, "Should have exactly 1 available order");
+        assertEq(availableOrders[0], newOrderId, "Available order should be the new order");
         
         console.log("Failure recovery scenario working correctly");
     }
