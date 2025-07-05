@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { InheritanceTooltip } from "./InheritanceTooltip";
 import { Abi, AbiFunction } from "abitype";
-import { Address, TransactionReceipt } from "viem";
-import { useAccount, useConfig, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { Address, TransactionReceipt, encodeFunctionData } from "viem";
+import { useWaitForTransactionReceipt, useSendTransaction } from "wagmi";
+import { useWallets } from "@privy-io/react-auth";
 import {
   ContractInput,
   TxReceipt,
@@ -14,9 +15,7 @@ import {
   transformAbiFunction,
 } from "~~/app/debug/_components/contract";
 import { IntegerInput } from "~~/components/scaffold-eth";
-import { useTransactor } from "~~/hooks/scaffold-eth";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
-import { simulateContractWriteAndNotifyError } from "~~/utils/scaffold-eth/contract";
 
 type WriteOnlyFunctionFormProps = {
   abi: Abi;
@@ -35,39 +34,63 @@ export const WriteOnlyFunctionForm = ({
 }: WriteOnlyFunctionFormProps) => {
   const [form, setForm] = useState<Record<string, any>>(() => getInitialFormState(abiFunction));
   const [txValue, setTxValue] = useState<string>("");
-  const { chain } = useAccount();
-  const writeTxn = useTransactor();
+  const [result, setResult] = useState<string | undefined>();
+  const { wallets } = useWallets();
+  const activeWallet = wallets?.[0];
   const { targetNetwork } = useTargetNetwork();
-  const writeDisabled = !chain || chain?.id !== targetNetwork.id;
+  
+  const getChainNumber = (chainId: string | undefined): number => {
+    if (!chainId) return 0;
+    return Number(chainId.split(":")[1]);
+  };
+  
+  const writeDisabled = !activeWallet || getChainNumber(activeWallet?.chainId) !== targetNetwork.id;
 
-  const { data: result, isPending, writeContractAsync } = useWriteContract();
-
-  const wagmiConfig = useConfig();
+  // Use wagmi's useSendTransaction hook (recommended by Privy)
+  const { sendTransaction, isPending, error } = useSendTransaction();
 
   const handleWrite = async () => {
-    if (writeContractAsync) {
+    if (activeWallet && !writeDisabled) {
       try {
-        const writeContractObj = {
-          address: contractAddress,
-          functionName: abiFunction.name,
+        // Encode the function call data
+        const args = getParsedContractFunctionArgs(form);
+        const data = encodeFunctionData({
           abi: abi,
-          args: getParsedContractFunctionArgs(form),
-          value: BigInt(txValue),
-        };
-        await simulateContractWriteAndNotifyError({ wagmiConfig, writeContractParams: writeContractObj });
+          functionName: abiFunction.name,
+          args: args,
+        });
 
-        const makeWriteWithParams = () => writeContractAsync(writeContractObj);
-        await writeTxn(makeWriteWithParams);
-        onChange();
+        console.log('Active wallet:', activeWallet);
+        console.log('Encoded data:', data);
+        console.log('Contract address:', contractAddress);
+        console.log('Value:', txValue);
+
+        // Use wagmi's sendTransaction hook
+        sendTransaction({
+          to: contractAddress,
+          data: data,
+          value: txValue ? BigInt(txValue) : undefined,
+        }, {
+          onSuccess: (hash: `0x${string}`) => {
+            console.log('Transaction hash:', hash);
+            setResult(hash);
+            onChange();
+          },
+          onError: (error: any) => {
+            console.error('Transaction failed:', error);
+            alert(`Transaction failed: ${error.message}`);
+          }
+        });
       } catch (e: any) {
         console.error("⚡️ ~ file: WriteOnlyFunctionForm.tsx:handleWrite ~ error", e);
+        alert(`Transaction failed: ${e.message || 'Unknown error'}`);
       }
     }
   };
 
   const [displayedTxResult, setDisplayedTxResult] = useState<TransactionReceipt>();
   const { data: txResult } = useWaitForTransactionReceipt({
-    hash: result,
+    hash: result as `0x${string}`,
   });
   useEffect(() => {
     setDisplayedTxResult(txResult);
@@ -75,7 +98,7 @@ export const WriteOnlyFunctionForm = ({
 
   // TODO use `useMemo` to optimize also update in ReadOnlyFunctionForm
   const transformedFunction = transformAbiFunction(abiFunction);
-  const inputs = transformedFunction.inputs.map((input, inputIndex) => {
+  const inputs = transformedFunction.inputs.map((input: any, inputIndex: number) => {
     const key = getFunctionInputKey(abiFunction.name, input, inputIndex);
     return (
       <ContractInput

@@ -60,6 +60,10 @@ export const HeaderMenuLinks = () => {
 export const Header = () => {
   const { targetNetwork } = useTargetNetwork();
   const isLocalNetwork = targetNetwork.id === hardhat.id;
+  
+  console.log("** targetNetwork:", targetNetwork.id);
+  console.log("** isLocalNetwork:", isLocalNetwork);
+
 
   const burgerMenuRef = useRef<HTMLDetailsElement>(null);
   useOutsideClick(burgerMenuRef, () => {

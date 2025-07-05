@@ -1,9 +1,9 @@
-import { wagmiConnectors } from "./wagmiConnectors";
-import { Chain, createClient, fallback, http } from "viem";
-import { hardhat, mainnet } from "viem/chains";
-import { createConfig } from "wagmi";
+import { Chain } from "viem";
+import { hardhat, mainnet, sepolia } from "viem/chains";
+import { http } from "wagmi";
 import scaffoldConfig, { DEFAULT_ALCHEMY_API_KEY, ScaffoldConfig } from "~~/scaffold.config";
 import { getAlchemyHttpUrl } from "~~/utils/scaffold-eth";
+import { createConfig } from '@privy-io/wagmi';
 
 const { targetNetworks } = scaffoldConfig;
 
@@ -12,33 +12,32 @@ export const enabledChains = targetNetworks.find((network: Chain) => network.id 
   ? targetNetworks
   : ([...targetNetworks, mainnet] as const);
 
-export const wagmiConfig = createConfig({
-  chains: enabledChains,
-  connectors: wagmiConnectors,
-  ssr: true,
-  client({ chain }) {
-    let rpcFallbacks = [http()];
-
+// Create transports for each chain
+const createTransports = () => {
+  const transports: Record<number, any> = {};
+  
+  enabledChains.forEach((chain) => {
     const rpcOverrideUrl = (scaffoldConfig.rpcOverrides as ScaffoldConfig["rpcOverrides"])?.[chain.id];
+    
     if (rpcOverrideUrl) {
-      rpcFallbacks = [http(rpcOverrideUrl), http()];
+      transports[chain.id] = http(rpcOverrideUrl);
     } else {
       const alchemyHttpUrl = getAlchemyHttpUrl(chain.id);
       if (alchemyHttpUrl) {
         const isUsingDefaultKey = scaffoldConfig.alchemyApiKey === DEFAULT_ALCHEMY_API_KEY;
         // If using default Scaffold-ETH 2 API key, we prioritize the default RPC
-        rpcFallbacks = isUsingDefaultKey ? [http(), http(alchemyHttpUrl)] : [http(alchemyHttpUrl), http()];
+        transports[chain.id] = isUsingDefaultKey ? http() : http(alchemyHttpUrl);
+      } else {
+        transports[chain.id] = http();
       }
     }
+  });
+  
+  return transports;
+};
 
-    return createClient({
-      chain,
-      transport: fallback(rpcFallbacks),
-      ...(chain.id !== (hardhat as Chain).id
-        ? {
-            pollingInterval: scaffoldConfig.pollingInterval,
-          }
-        : {}),
-    });
-  },
+export const wagmiConfig = createConfig({
+  chains: enabledChains,
+  transports: createTransports(),
+  pollingInterval: scaffoldConfig.pollingInterval,
 });

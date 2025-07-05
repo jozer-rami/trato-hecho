@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { MutateOptions } from "@tanstack/react-query";
 import { Abi, ExtractAbiFunctionNames } from "abitype";
-import { Config, UseWriteContractParameters, useAccount, useConfig, useWriteContract } from "wagmi";
+import { Config, UseWriteContractParameters, useConfig, useWriteContract } from "wagmi";
 import { WriteContractErrorType, WriteContractReturnType } from "wagmi/actions";
 import { WriteContractVariables } from "wagmi/query";
+import { useWallets } from "@privy-io/react-auth";
 import { useSelectedNetwork } from "~~/hooks/scaffold-eth";
 import { useDeployedContractInfo, useTransactor } from "~~/hooks/scaffold-eth";
 import { AllowedChainIds, notification } from "~~/utils/scaffold-eth";
@@ -71,7 +72,8 @@ export function useScaffoldWriteContract<TContractName extends ContractName>(
     }
   }, [configOrName]);
 
-  const { chain: accountChain } = useAccount();
+  const { wallets } = useWallets();
+  const activeWallet = wallets?.[0];
   const writeTx = useTransactor();
   const [isMining, setIsMining] = useState(false);
 
@@ -84,6 +86,11 @@ export function useScaffoldWriteContract<TContractName extends ContractName>(
     chainId: selectedNetwork.id as AllowedChainIds,
   });
 
+  const getChainNumber = (chainId: string | undefined): number => {
+    if (!chainId) return 0;
+    return Number(chainId.split(":")[1]);
+  };
+
   const sendContractWriteAsyncTx = async <
     TFunctionName extends ExtractAbiFunctionNames<ContractAbi<TContractName>, "nonpayable" | "payable">,
   >(
@@ -95,12 +102,12 @@ export function useScaffoldWriteContract<TContractName extends ContractName>(
       return;
     }
 
-    if (!accountChain?.id) {
+    if (!activeWallet) {
       notification.error("Please connect your wallet");
       return;
     }
 
-    if (accountChain?.id !== selectedNetwork.id) {
+    if (getChainNumber(activeWallet?.chainId) !== selectedNetwork.id) {
       notification.error(`Wallet is connected to the wrong network. Please switch to ${selectedNetwork.name}`);
       return;
     }
@@ -152,12 +159,12 @@ export function useScaffoldWriteContract<TContractName extends ContractName>(
       notification.error("Target Contract is not deployed, did you forget to run `yarn deploy`?");
       return;
     }
-    if (!accountChain?.id) {
+    if (!activeWallet) {
       notification.error("Please connect your wallet");
       return;
     }
 
-    if (accountChain?.id !== selectedNetwork.id) {
+    if (getChainNumber(activeWallet?.chainId) !== selectedNetwork.id) {
       notification.error(`Wallet is connected to the wrong network. Please switch to ${selectedNetwork.name}`);
       return;
     }

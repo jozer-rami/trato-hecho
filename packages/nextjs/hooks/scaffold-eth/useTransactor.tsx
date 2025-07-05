@@ -2,6 +2,7 @@ import { Hash, SendTransactionParameters, TransactionReceipt, WalletClient } fro
 import { Config, useWalletClient } from "wagmi";
 import { getPublicClient } from "wagmi/actions";
 import { SendTransactionMutate } from "wagmi/query";
+import { useWallets } from "@privy-io/react-auth";
 import { wagmiConfig } from "~~/services/web3/wagmiConfig";
 import { getBlockExplorerTxLink, getParsedError, notification } from "~~/utils/scaffold-eth";
 import { TransactorFuncOptions } from "~~/utils/scaffold-eth/contract";
@@ -35,12 +36,15 @@ const TxnNotification = ({ message, blockExplorerLink }: { message: string; bloc
 export const useTransactor = (_walletClient?: WalletClient): TransactionFunc => {
   let walletClient = _walletClient;
   const { data } = useWalletClient();
+  const { wallets } = useWallets();
+  const activeWallet = wallets?.[0];
+  
   if (walletClient === undefined && data) {
     walletClient = data;
   }
 
   const result: TransactionFunc = async (tx, options) => {
-    if (!walletClient) {
+    if (!walletClient && !activeWallet) {
       notification.error("Cannot access account");
       console.error("⚡️ ~ file: useTransactor.tsx ~ error");
       return;
@@ -51,7 +55,7 @@ export const useTransactor = (_walletClient?: WalletClient): TransactionFunc => 
     let transactionReceipt: TransactionReceipt | undefined;
     let blockExplorerTxURL = "";
     try {
-      const network = await walletClient.getChainId();
+      const network = await walletClient?.getChainId();
       // Get full transaction from public client
       const publicClient = getPublicClient(wagmiConfig);
 
@@ -60,7 +64,7 @@ export const useTransactor = (_walletClient?: WalletClient): TransactionFunc => 
         // Tx is already prepared by the caller
         const result = await tx();
         transactionHash = result;
-      } else if (tx != null) {
+      } else if (tx != null && walletClient) {
         transactionHash = await walletClient.sendTransaction(tx as SendTransactionParameters);
       } else {
         throw new Error("Incorrect transaction passed to transactor");
@@ -79,7 +83,7 @@ export const useTransactor = (_walletClient?: WalletClient): TransactionFunc => 
       });
       notification.remove(notificationId);
 
-      if (transactionReceipt.status === "reverted") throw new Error("Transaction reverted");
+      if (transactionReceipt?.status === "reverted") throw new Error("Transaction reverted");
 
       notification.success(
         <TxnNotification message="Transaction completed successfully!" blockExplorerLink={blockExplorerTxURL} />,
@@ -88,7 +92,7 @@ export const useTransactor = (_walletClient?: WalletClient): TransactionFunc => 
         },
       );
 
-      if (options?.onBlockConfirmation) options.onBlockConfirmation(transactionReceipt);
+      if (options?.onBlockConfirmation && transactionReceipt) options.onBlockConfirmation(transactionReceipt);
     } catch (error: any) {
       if (notificationId) {
         notification.remove(notificationId);

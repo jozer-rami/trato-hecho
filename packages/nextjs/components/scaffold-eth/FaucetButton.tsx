@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createWalletClient, http, parseEther } from "viem";
 import { hardhat } from "viem/chains";
-import { useAccount } from "wagmi";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { BanknotesIcon } from "@heroicons/react/24/outline";
 import { useTransactor } from "~~/hooks/scaffold-eth";
 import { useWatchBalance } from "~~/hooks/scaffold-eth/useWatchBalance";
@@ -21,13 +21,21 @@ const localWalletClient = createWalletClient({
  * FaucetButton button which lets you grab eth.
  */
 export const FaucetButton = () => {
-  const { address, chain: ConnectedChain } = useAccount();
+  const { authenticated } = usePrivy();
+  const { wallets } = useWallets();
+  const activeWallet = wallets?.[0];
+  const address = activeWallet?.address;
 
   const { data: balance } = useWatchBalance({ address });
 
   const [loading, setLoading] = useState(false);
 
   const faucetTxn = useTransactor(localWalletClient);
+
+  const getChainNumber = (chainId: string | undefined): number => {
+    if (!chainId) return 0;
+    return Number(chainId.split(":")[1]);
+  };
 
   const sendETH = async () => {
     if (!address) return;
@@ -46,7 +54,11 @@ export const FaucetButton = () => {
   };
 
   // Render only on local chain
-  if (ConnectedChain?.id !== hardhat.id) {
+  if (!authenticated || getChainNumber(activeWallet?.chainId) !== hardhat.id) {
+    console.log("** FaucetButton: not authenticated or not on local chain");
+    console.log("** authenticated:", authenticated);
+    console.log("** activeWallet?.chainId:", activeWallet?.chainId);
+    console.log("** hardhat.id:", hardhat.id);
     return null;
   }
 

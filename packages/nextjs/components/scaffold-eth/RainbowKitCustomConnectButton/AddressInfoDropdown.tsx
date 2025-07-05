@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { NetworkOptions } from "./NetworkOptions";
 import { getAddress } from "viem";
 import { Address } from "viem";
-import { useDisconnect } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   ArrowLeftOnRectangleIcon,
   ArrowTopRightOnSquareIcon,
@@ -31,7 +31,7 @@ export const AddressInfoDropdown = ({
   displayName,
   blockExplorerAddressLink,
 }: AddressInfoDropdownProps) => {
-  const { disconnect } = useDisconnect();
+  const { logout } = usePrivy();
   const checkSumAddress = getAddress(address);
 
   const { copyToClipboard: copyAddressToClipboard, isCopiedToClipboard: isAddressCopiedToClipboard } =
@@ -45,6 +45,14 @@ export const AddressInfoDropdown = ({
   };
 
   useOutsideClick(dropdownRef, closeDropdown);
+
+  const handleDisconnect = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Error disconnecting:", error);
+    }
+  };
 
   return (
     <>
@@ -112,7 +120,7 @@ export const AddressInfoDropdown = ({
             <button
               className="menu-item text-error h-8 btn-sm rounded-xl! flex gap-3 py-3"
               type="button"
-              onClick={() => disconnect()}
+              onClick={handleDisconnect}
             >
               <ArrowLeftOnRectangleIcon className="h-6 w-4 ml-2 sm:ml-0" /> <span>Disconnect</span>
             </button>
