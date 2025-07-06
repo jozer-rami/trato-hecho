@@ -26,7 +26,7 @@ contract PopulateOrdersWithPrivateKeys is ScaffoldETHDeploy {
     address constant USDC_ADDRESS = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
     
     // TODO: Update this with your deployed TratoHechoP2P contract address
-    address constant P2P_CONTRACT_ADDRESS = 0x7b3C2c899b62Cd67b22768aE0836aDc951851276;
+    address constant P2P_CONTRACT_ADDRESS = 0xAeC909EC861f572Eb0724714ab21D861E51A1853;
     
     // Order details for each user
     struct OrderDetails {

@@ -191,6 +191,7 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
     error InvalidOrderStatus(uint256 orderId, OrderStatus expected, OrderStatus actual);
     error UnauthorizedAccess(address caller, address expected);
     error InsufficientUSDCBalance(address seller, uint256 required, uint256 available);
+    error InsufficientUSDCAllowance(address seller, uint256 required, uint256 available);
     error InvalidAmount(uint256 amount);
     error InvalidDeadline(uint256 deadline);
     error UnexpectedRequestID(bytes32 requestId);
@@ -273,9 +274,8 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
     function _completeSameChainOrder(uint256 orderId) internal {
         Order storage order = orders[orderId];
         
-        // Transfer USDC from seller to buyer on same chain
-        bool success = usdcToken.transferFrom(
-            order.seller,
+        // Transfer USDC from contract (escrow) to buyer
+        bool success = usdcToken.transfer(
             order.buyer,
             order.amountUSDC
         );
@@ -299,14 +299,7 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
             isPending: true
         });
         
-        // Transfer USDC from seller to this contract first
-        bool success = usdcToken.transferFrom(
-            order.seller,
-            address(this),
-            order.amountUSDC
-        );
-        require(success, "USDC transfer failed");
-        
+        // USDC is already in the contract from when the order was created
         // Approve USDC for burning
         usdcToken.approve(TOKEN_MESSENGER, order.amountUSDC);
         
@@ -431,6 +424,16 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
             revert InsufficientUSDCBalance(msg.sender, amountUSDC, sellerBalance);
         }
 
+        // Check if contract has sufficient allowance from seller
+        uint256 allowance = usdcToken.allowance(msg.sender, address(this));
+        if (allowance < amountUSDC) {
+            revert InsufficientUSDCAllowance(msg.sender, amountUSDC, allowance);
+        }
+
+        // Transfer USDC from seller to contract (escrow)
+        bool transferSuccess = usdcToken.transferFrom(msg.sender, address(this), amountUSDC);
+        require(transferSuccess, "USDC transfer to escrow failed");
+
         // Create order
         orderId = nextOrderId++;
         orders[orderId] = Order({
@@ -445,6 +448,8 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
             destinationDomain: 0, // Will be set by buyer
             isCrossChain: false   // Will be set by buyer
         });
+
+
 
         emit OrderCreated(orderId, msg.sender, amountUSDC, priceBOB, deadline);
     }
@@ -794,5 +799,10 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
             value /= 10;
         }
         return string(buffer);
+    }
+
+    // TEST-ONLY: Set order status for local testing
+    function setOrderStatus(uint256 orderId, OrderStatus status) public {
+        orders[orderId].status = status;
     }
 }

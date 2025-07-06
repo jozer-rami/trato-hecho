@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
-import { DeployYourContract } from "./DeployYourContract.s.sol";
+import { DeployTratoHechoP2P_CCTP } from "./DeployTratoHechoP2P_CCTP.s.sol";
 import { DeployTratoHechoP2P } from "./DeployTratoHechoP2P.s.sol";
 
 /**
@@ -17,8 +17,12 @@ contract DeployScript is ScaffoldETHDeploy {
         // Add new deployments here when needed
 
         // Deploy TratoHechoP2P contract
-        DeployTratoHechoP2P deployTratoHechoP2P = new DeployTratoHechoP2P();
-        deployTratoHechoP2P.run();
+        // DeployTratoHechoP2P deployTratoHechoP2P = new DeployTratoHechoP2P();
+        // deployTratoHechoP2P.run();
+
+        // Deploy TratoHechoP2P_CCTP contract
+        DeployTratoHechoP2P_CCTP deployTratoHechoP2P_CCTP = new DeployTratoHechoP2P_CCTP();
+        deployTratoHechoP2P_CCTP.run();
 
         // Deploy another contract
         // DeployMyContract myContract = new DeployMyContract();
