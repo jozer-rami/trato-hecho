@@ -3004,7 +3004,7 @@ const deployedContracts = {
       deploymentScript: "Deploy.s.sol",
     },
     TratoHechoP2P_CCTP: {
-      address: "0xaec909ec861f572eb0724714ab21d861e51a1853",
+      address: "0xe675204dc1f2ee8f9575fa9c56125ca53ee83242",
       abi: [
         {
           type: "constructor",
@@ -4152,7 +4152,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deploymentFile: "run-1751767740.json",
+      deploymentFile: "run-1751778541.json",
       deploymentScript: "Deploy.s.sol",
     },
   },

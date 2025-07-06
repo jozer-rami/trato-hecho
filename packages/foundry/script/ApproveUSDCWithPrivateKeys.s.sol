@@ -2,11 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
-import "../contracts/TratoHechoP2P.sol";
+import "../contracts/TratoHechoP2P_CCTP.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
- * @notice Script to approve USDC spending for TratoHechoP2P contract using private keys from .env
+ * @notice Script to approve USDC spending for TratoHechoP2P_CCTP contract using private keys from .env
  * @dev Approves 100 USDC per wallet for the 4 accounts
  * 
  * Setup:
@@ -25,8 +25,8 @@ contract ApproveUSDCWithPrivateKeys is ScaffoldETHDeploy {
     // USDC token address on Ethereum Sepolia
     address constant USDC_ADDRESS = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
     
-    // TODO: Update this with your deployed TratoHechoP2P contract address
-    address constant P2P_CONTRACT_ADDRESS = 0xAeC909EC861f572Eb0724714ab21D861E51A1853;
+    // TODO: Update this with your deployed TratoHechoP2P_CCTP contract address
+    address constant P2P_CONTRACT_ADDRESS = 0xE675204DC1F2ee8F9575FA9c56125Ca53eE83242;
     
     // Amount to approve per wallet (100 USDC with 6 decimals)
     uint256 constant APPROVAL_AMOUNT = 100e6;

@@ -26,7 +26,7 @@ contract PopulateOrdersWithPrivateKeys is ScaffoldETHDeploy {
     address constant USDC_ADDRESS = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
     
     // TODO: Update this with your deployed TratoHechoP2P_CCTP contract address
-    address constant P2P_CONTRACT_ADDRESS = 0xe1Aa25618fA0c7A1CFDab5d6B456af611873b629;
+    address constant P2P_CONTRACT_ADDRESS = 0xE675204DC1F2ee8F9575FA9c56125Ca53eE83242;
     
     // Order details for each user
     struct OrderDetails {
@@ -38,11 +38,11 @@ contract PopulateOrdersWithPrivateKeys is ScaffoldETHDeploy {
     OrderDetails[] public orders;
     
     constructor() {
-        // Initialize order details
-        orders.push(OrderDetails("Alice", 0.1e6, 1450));   // 0.1 USDC at 14.50 BOB/USDC
-        orders.push(OrderDetails("Bob", 0.2e6, 1500));     // 0.2 USDC at 15.00 BOB/USDC
-        orders.push(OrderDetails("Charlie", 0.3e6, 1480)); // 0.3 USDC at 14.80 BOB/USDC
-        orders.push(OrderDetails("David", 0.4e6, 1520));   // 0.4 USDC at 15.20 BOB/USDC
+        // Initialize order details with smaller amounts
+        orders.push(OrderDetails("Alice", 0.01e6, 1450));   // 0.01 USDC at 14.50 BOB/USDC
+        orders.push(OrderDetails("Bob", 0.02e6, 1500));     // 0.02 USDC at 15.00 BOB/USDC
+        orders.push(OrderDetails("Charlie", 0.03e6, 1480)); // 0.03 USDC at 14.80 BOB/USDC
+        orders.push(OrderDetails("David", 0.04e6, 1520));   // 0.04 USDC at 15.20 BOB/USDC
     }
     
     function run() external {
