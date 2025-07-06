@@ -2,11 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
-import "../contracts/TratoHechoP2P.sol";
+import "../contracts/TratoHechoP2P_CCTP.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
- * @notice Script to populate TratoHechoP2P contract with orders using private keys from .env
+ * @notice Script to populate TratoHechoP2P_CCTP contract with orders using private keys from .env
  * @dev Creates orders for 4 different users with small USDC amounts
  * 
  * Setup:
@@ -19,36 +19,36 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * 2. Update P2P_CONTRACT_ADDRESS below with your deployed contract address
  * 
  * Usage:
- * yarn deploy --file PopulateOrdersWithPrivateKeys.s.sol --network sepolia
+ * yarn deploy --file PopulateOrdersWithPrivateKeys_CCTP.s.sol --network sepolia
  */
 contract PopulateOrdersWithPrivateKeys is ScaffoldETHDeploy {
     // USDC token address on Ethereum Sepolia
     address constant USDC_ADDRESS = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
     
-    // TODO: Update this with your deployed TratoHechoP2P contract address
-    address constant P2P_CONTRACT_ADDRESS = 0x8ce361602B935680E8DeC218b820ff5056BeB7af;
+    // TODO: Update this with your deployed TratoHechoP2P_CCTP contract address
+    address constant P2P_CONTRACT_ADDRESS = 0xe1Aa25618fA0c7A1CFDab5d6B456af611873b629;
     
     // Order details for each user
     struct OrderDetails {
         string userName;
         uint256 usdcAmount; // in USDC (6 decimals)
-        uint256 bobPrice;   // BOB per USDC (18 decimals)
+        uint256 bobPrice;   // BOB per USDC (2 decimals)
     }
     
     OrderDetails[] public orders;
     
     constructor() {
         // Initialize order details
-        orders.push(OrderDetails("Alice", 0.1e6, 14.5e18));   // 0.1 USDC at 14.5 BOB/USDC
-        orders.push(OrderDetails("Bob", 0.2e6, 15.0e18));     // 0.2 USDC at 15.0 BOB/USDC
-        orders.push(OrderDetails("Charlie", 0.3e6, 14.8e18)); // 0.3 USDC at 14.8 BOB/USDC
-        orders.push(OrderDetails("David", 0.4e6, 15.2e18));   // 0.4 USDC at 15.2 BOB/USDC
+        orders.push(OrderDetails("Alice", 0.1e6, 1450));   // 0.1 USDC at 14.50 BOB/USDC
+        orders.push(OrderDetails("Bob", 0.2e6, 1500));     // 0.2 USDC at 15.00 BOB/USDC
+        orders.push(OrderDetails("Charlie", 0.3e6, 1480)); // 0.3 USDC at 14.80 BOB/USDC
+        orders.push(OrderDetails("David", 0.4e6, 1520));   // 0.4 USDC at 15.20 BOB/USDC
     }
     
     function run() external {
         require(P2P_CONTRACT_ADDRESS != address(0), "Please update P2P_CONTRACT_ADDRESS");
         
-        TratoHechoP2P p2p = TratoHechoP2P(P2P_CONTRACT_ADDRESS);
+        TratoHechoP2P_CCTP p2p = TratoHechoP2P_CCTP(P2P_CONTRACT_ADDRESS);
         IERC20 usdc = IERC20(USDC_ADDRESS);
         
         console.log("=== Creating Orders with Private Keys ===");
@@ -88,30 +88,26 @@ contract PopulateOrdersWithPrivateKeys is ScaffoldETHDeploy {
         console.log("\n=== Orders Creation Completed ===");
     }
     
-    function _createOrder(TratoHechoP2P p2p, IERC20 usdc, OrderDetails memory order, address seller) internal {
+    function _createOrder(TratoHechoP2P_CCTP p2p, IERC20 usdc, OrderDetails memory order, address seller) internal {
         // Approve USDC spending
         usdc.approve(address(p2p), order.usdcAmount);
-        
-        // Calculate BOB amount
-        uint256 bobAmount = (order.usdcAmount * order.bobPrice) / 1e18;
         
         // Set deadline to 24 hours from now
         uint256 deadline = block.timestamp + 24 hours;
         
-        // Create the order
-        uint256 orderId = p2p.createSellOrder(order.usdcAmount, bobAmount, deadline);
+        // Create the order - pass priceBOB directly (2 decimals)
+        uint256 orderId = p2p.createSellOrder(order.usdcAmount, order.bobPrice, deadline);
         
         console.log("[SUCCESS] Order created for", order.userName);
         console.log("   Order ID:", orderId);
         console.log("   USDC Amount:", order.usdcAmount / 10**6, "USDC");
-        console.log("   BOB Price:", order.bobPrice / 1e18, "BOB/USDC");
-        console.log("   Total BOB:", bobAmount / 1e18, "BOB");
+        console.log("   BOB Price:", order.bobPrice / 100, "BOB/USDC");
         console.log("   Seller:", seller);
     }
     
     /**
      * @dev Function to check balances before creating orders
-     * Usage: yarn deploy --file PopulateOrdersWithPrivateKeys.s.sol --sig "checkBalances()" --network sepolia
+     * Usage: yarn deploy --file PopulateOrdersWithPrivateKeys_CCTP.s.sol --sig "checkBalances()" --network sepolia
      */
     function checkBalances() external view {
         require(P2P_CONTRACT_ADDRESS != address(0), "Please update P2P_CONTRACT_ADDRESS");

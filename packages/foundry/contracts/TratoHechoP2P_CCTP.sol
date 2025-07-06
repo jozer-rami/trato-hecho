@@ -281,9 +281,19 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
     /**
      * @notice Internal function to complete cross-chain order
      * @param orderId The order ID
+     * @dev Uses CCTP v2 for cross-chain USDC transfers
+     * @dev Reverts if:
+     * - burnToken is not supported
+     * - destinationDomain has no TokenMessenger registered
+     * - USDC transferFrom/burn fails
+     * - maxFee >= amount (we use 0 for no limit)
+     * - MessageTransmitterV2#sendMessage reverts
      */
     function _completeCrossChainOrder(uint256 orderId) internal {
         Order storage order = orders[orderId];
+        
+        // Validate destination domain is supported
+        require(_validateDestinationDomain(order.destinationDomain), "Invalid destination domain");
         
         // Store cross-chain details
         crossChainTransfers[orderId] = CrossChainTransfer({
@@ -295,20 +305,20 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
         });
         
         // USDC is already in the contract from when the order was created
-        // Approve USDC for burning
+        // Approve USDC for burning by CCTP TokenMessenger
         usdcToken.approve(TOKEN_MESSENGER, order.amountUSDC);
         
-        // Initiate cross-chain transfer
+        // Initiate cross-chain transfer using CCTP v2
         ITokenMessenger messenger = ITokenMessenger(TOKEN_MESSENGER);
         
         uint64 nonce = messenger.depositForBurn(
-            order.amountUSDC,
-            order.destinationDomain,
-            addressToBytes32(order.buyer),
-            address(usdcToken),
-            addressToBytes32(address(this)), // destinationCaller (this contract)
-            0, // maxFee (0 for no fee limit)
-            0  // minFinalityThreshold (0 for default)
+            order.amountUSDC,                    // amount to burn
+            order.destinationDomain,             // destination domain
+            addressToBytes32(order.buyer),       // mint recipient on destination
+            address(usdcToken),                  // burn token (USDC)
+            bytes32(0),                          // destinationCaller (0 = any address can broadcast)
+            0,                                   // maxFee (0 = no fee limit)
+            0                                    // minFinalityThreshold (0 = default)
         );
         
         crossChainTransfers[orderId].cctpNonce = nonce;
@@ -354,6 +364,13 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
      */
     function addressToBytes32(address addr) internal pure returns (bytes32) {
         return bytes32(uint256(uint160(addr)));
+    }
+    
+    /**
+     * @notice Convert address to bytes32 (public wrapper for testing)
+     */
+    function addressToBytes32Public(address addr) external pure returns (bytes32) {
+        return addressToBytes32(addr);
     }
     
     /**
