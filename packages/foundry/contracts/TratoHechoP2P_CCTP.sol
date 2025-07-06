@@ -14,15 +14,10 @@ interface ITokenMessenger {
         uint256 amount,
         uint32 destinationDomain,
         bytes32 mintRecipient,
-        address burnToken
-    ) external returns (uint64 nonce);
-    
-    function depositForBurnWithCaller(
-        uint256 amount,
-        uint32 destinationDomain,
-        bytes32 mintRecipient,
         address burnToken,
-        bytes32 destinationCaller
+        bytes32 destinationCaller,
+        uint256 maxFee,
+        uint32 minFinalityThreshold
     ) external returns (uint64 nonce);
 }
 
@@ -310,7 +305,10 @@ contract TratoHechoP2P_CCTP is FunctionsClient, ConfirmedOwner {
             order.amountUSDC,
             order.destinationDomain,
             addressToBytes32(order.buyer),
-            address(usdcToken)
+            address(usdcToken),
+            addressToBytes32(address(this)), // destinationCaller (this contract)
+            0, // maxFee (0 for no fee limit)
+            0  // minFinalityThreshold (0 for default)
         );
         
         crossChainTransfers[orderId].cctpNonce = nonce;
