@@ -79,298 +79,277 @@ We welcome contributions to Scaffold-ETH 2!
 
 Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
 
+# TratoHechoP2P_CCTP
 
-# trato-hecho
-Trustless p2p platform
+A peer-to-peer USDC trading platform with EIP-7702 integration for seamless cross-chain settlements via Circle's Cross-Chain Transfer Protocol (CCTP).
 
-# First idea flow
+## Overview
 
-Detailed User Flow: Bob Buying USDC from Alice
-Let me walk you through the complete user journey for Bob, who has fiat currency and wants to purchase USDC from Alice's existing order.
-🎯 Initial Setup
-Alice (Seller):
+TratoHechoP2P_CCTP enables users to trade USDC for fiat currency across multiple blockchain networks. The platform introduces **EIP-7702 "temporary delegation"** to eliminate manual escrow steps, allowing automatic settlement once payment verification is complete.
 
-Has 100 USDC in her smart wallet
-Created an order: "Sell 100 USDC for 500 BOB (Boliviano)"
-Already signed EIP-7702 authorization allowing the OrderBook contract to transfer her USDC only if payment is verified
+### Key Features
 
-Bob (Buyer):
+- **EIP-7702 Integration**: Sellers can delegate temporary authorization instead of locking funds in escrow
+- **Automatic Settlement**: Smart contract automatically transfers USDC when payment is verified
+- **Cross-Chain Support**: Seamless USDC transfers across chains via Circle CCTP
+- **Oracle-Verified Payments**: Chainlink integration for reliable fiat payment verification
+- **Backwards Compatible**: Traditional escrow flow remains available for all users
 
-Has 500 BOB in his bank account
-Wants to buy 100 USDC
-Has a Web3 wallet (MetaMask) connected to the dApp
+## How It Works
 
+### EIP-7702 Enhanced Flow (Recommended)
 
-📱 Step-by-Step User Flow
-Step 1: Bob Discovers the Order
-Bob opens the P2P Exchange dApp
-↓
-Connects his MetaMask wallet
-↓
-Views available orders on the marketplace
-↓
-Sees Alice's order: "100 USDC for 500 BOB"
-↓
-Clicks "View Details" to see:
-- Exchange rate: 5 BOB per USDC
-- Alice's reputation/history
-- Order expiration time
-- Payment instructions
-Frontend Code Example:
+1. **Seller Creates Order**: Signs an EIP-7702 delegation and creates a sell order without escrowing funds
+2. **Buyer Accepts**: Buyer accepts the order and makes fiat payment off-chain
+3. **Payment Verification**: Chainlink oracle verifies the fiat payment through banking APIs
+4. **Automatic Settlement**: Contract uses AUTHCALL to automatically transfer seller's USDC to buyer
 
-```
-javascript// Bob sees this order in the UI
-const order = {
-  id: 42,
-  seller: "0xAlice...",
-  amountUSDC: "100.000000", // 100 USDC (6 decimals)
-  priceBOB: "500.0", // 500 BOB
-  status: "Created",
-  deadline: "2025-07-05T12:00:00Z"
-};
-```
-Step 2: Bob Accepts the Order
-Bob clicks "Accept Order"
-↓
-Frontend shows confirmation modal:
-- "You will pay: 500 BOB"
-- "You will receive: 100 USDC"
-- "To wallet: 0xBob..."
-↓
-Bob confirms the acceptance
-↓
-Transaction is sent to OrderBook contract
-Smart Contract Interaction:
-```
-solidity// OrderBook.acceptOrder() is called
-function acceptOrder(uint256 orderId) external {
-    Order storage order = orders[orderId];
-    
-    // Validation checks
-    require(order.status == OrderStatus.Created);
-    require(block.timestamp <= order.deadline);
-    
-    // Update order
-    order.buyer = msg.sender; // Bob's address
-    order.status = OrderStatus.Accepted;
-    
-    // Update UserOperation with Bob's address as recipient
-    order.userOp.callData = abi.encodeWithSelector(
-        IERC20.transfer.selector,
-        msg.sender, // Bob will receive the USDC
-        order.amountUSDC
-    );
-    
-    emit OrderAccepted(orderId, msg.sender);
+### Traditional Escrow Flow (Legacy Support)
+
+1. **Seller Escrows**: Seller approves and deposits USDC into the contract
+2. **Buyer Accepts**: Buyer accepts order and makes fiat payment
+3. **Payment Verification**: Oracle verifies payment
+4. **Manual Completion**: Seller manually calls `completeOrder()` to release funds
+
+## Smart Contract Architecture
+
+### Core Components
+
+- **Order Creation**: Handles both delegation-based and escrow-based order creation
+- **Order Management**: Manages order lifecycle, acceptance, and status tracking
+- **EIP-7702 Handler**: Validates delegations and executes AUTHCALL operations
+- **Payment Verification**: Interfaces with Chainlink oracle for payment confirmation
+- **Auto Settlement**: Automatically settles orders using seller delegations
+- **Cross-Chain Settlement**: Integrates with Circle CCTP for multi-chain transfers
+- **Escrow System**: Traditional escrow support for backwards compatibility
+
+### Key Data Structures
+
+```solidity
+struct Order {
+    uint256 id;
+    address seller;
+    address buyer;
+    uint256 amountUSDC;
+    uint256 priceFiat;
+    uint256 deadline;
+    OrderStatus status;
+    bool isCrossChain;
+}
+
+struct Delegation {
+    address delegate;      // P2P contract address
+    uint64  expiry;        // Unix timestamp
+    bytes32 salt;          // Replay protection
+    bytes   signature;     // EIP-712 signature
+}
+
+struct DelegatedAuth {
+    Delegation delegation;
+    bool active;
 }
 ```
 
-Step 3: Bob Gets Payment Instructions
-Order acceptance confirmed ✅
-↓
-Frontend automatically shows payment details:
-- "Send exactly 500 BOB to Alice"
-- Bank account details for Alice
-- Payment reference: "P2P-ORDER-42"
-- Important: "Include this reference in your transfer"
-↓
-Timer starts: "Complete payment within 30 minutes"
-UI Display:
-```
-javascript// Bob sees this payment screen
-const paymentInstructions = {
-  amount: "500.00 BOB",
-  recipient: "Alice Rodriguez",
-  bankAccount: "BANCO-123-456789",
-  reference: "P2P-ORDER-42",
-  deadline: "30 minutes remaining"
-};
-```
-Step 4: Bob Makes the Bank Transfer
-Bob opens his banking app
-↓
-Creates a new transfer:
-- Recipient: Alice Rodriguez
-- Account: BANCO-123-456789
-- Amount: 500.00 BOB
-- Reference: "P2P-ORDER-42" ⚠️ (Critical!)
-↓
-Confirms and sends the transfer
-↓
-Returns to P2P dApp
-↓
-Clicks "I have completed the payment"
-Backend Process:
-```
-javascript// When Bob clicks "Payment completed"
-const bankTransfer = {
-  fromAccount: "bob-bank-123",
-  toAccount: "alice-bank-456", 
-  amount: 500.00,
-  reference: "P2P-ORDER-42",
-  timestamp: "2025-07-04T10:30:00Z",
-  status: "processing" // Bank is processing
-};
-```
-Step 5: Automatic Payment Verification
-OrderBook contract detects "payment completed" signal
-↓
-Triggers Chainlink Functions to verify payment
-↓
-Chainlink calls Banking API with:
-- Order ID: 42
-- Expected amount: 500 BOB  
-- Expected reference: "P2P-ORDER-42"
-- Alice's account details
-↓
-Banking API responds: "Payment confirmed ✅"
-Chainlink Functions Code:
-```
-javascript// This runs off-chain via Chainlink
-const orderId = args[0]; // "42"
-const expectedAmount = args[1]; // "500"
-const reference = args[2]; // "P2P-ORDER-42"
+## Installation & Setup
 
-const apiResponse = await Functions.makeHttpRequest({
-  url: `${bankingApiUrl}/api/v1/transfers/verify`,
-  method: "POST",
-  headers: { "Authorization": `Bearer ${apiKey}` },
-  data: {
-    orderId: orderId,
-    expectedAmount: expectedAmount,
-    reference: reference,
-    recipientAccount: "alice-bank-456"
-  }
+### Prerequisites
+
+- Node.js v18+
+- Hardhat or Foundry
+- EIP-7702 compatible wallet (future requirement)
+
+### Installation
+
+```bash
+git clone https://github.com/your-org/TratoHechoP2P_CCTP.git
+cd TratoHechoP2P_CCTP
+npm install
+```
+
+### Environment Setup
+
+Create a `.env` file:
+
+```env
+PRIVATE_KEY=your_private_key
+CHAINLINK_ORACLE_ADDRESS=0x...
+USDC_TOKEN_ADDRESS=0x...
+CCTP_TOKEN_MESSENGER=0x...
+```
+
+### Deployment
+
+```bash
+# Deploy to testnet
+npx hardhat deploy --network sepolia
+
+# Deploy to mainnet
+npx hardhat deploy --network mainnet
+```
+
+## Usage
+
+### For Sellers
+
+#### Create Order with EIP-7702 Delegation
+
+```solidity
+// Sign delegation (handled by wallet)
+Delegation memory delegation = Delegation({
+    delegate: address(tratomp2pContract),
+    expiry: block.timestamp + 24 hours,
+    salt: keccak256(abi.encode(block.timestamp, msg.sender)),
+    signature: // EIP-712 signature from wallet
 });
 
-// Banking API confirms payment exists
-if (apiResponse.data.confirmed === true) {
-  return Functions.encodeUint256(1); // Verified!
-} else {
-  return Functions.encodeUint256(0); // Not found
-}
-```
-Step 6: Smart Contract Executes the Trade
-Chainlink Functions returns "1" (verified)
-↓
-OrderBook.fulfillRequest() is called automatically
-↓
-Contract triggers UserOperation execution:
-- Uses Alice's pre-signed EIP-7702 authorization
-- Transfers 100 USDC from Alice's smart wallet to Bob
-- No gas fees for Alice (gasless transaction)
-↓
-Trade completed! 🎉
-Smart Contract Execution:
-```
-solidityfunction fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {
-    uint256 orderId = requestIdToOrderId[requestId];
-    Order storage order = orders[orderId];
-    
-    uint256 result = abi.decode(response, (uint256));
-    
-    if (result == 1) { // Payment verified
-        order.status = OrderStatus.PaymentVerified;
-        _executeOrder(orderId); // Execute the USDC transfer
-    }
-}
-
-function _executeOrder(uint256 orderId) internal {
-    Order storage order = orders[orderId];
-    
-    // Submit Alice's pre-signed UserOperation to EntryPoint
-    UserOperation[] memory ops = new UserOperation[](1);
-    ops[0] = order.userOp; // Contains Alice's signature
-    
-    // EntryPoint executes: Alice's wallet → transfer 100 USDC → Bob
-    ENTRY_POINT.handleOps(ops, payable(address(this)));
-    
-    order.status = OrderStatus.Completed;
-    emit OrderCompleted(orderId, order.seller, order.buyer, order.amountUSDC);
-}
-```
-Step 7: Bob Receives Confirmation
-Bob's wallet balance updates: +100 USDC ✅
-↓
-Frontend shows success message:
-- "Trade completed successfully!"
-- "You received: 100 USDC"
-- "Transaction hash: 0x..."
-- "Rate your experience with Alice"
-↓
-Bob can now use his 100 USDC for other purposes
-Final State:
-```
-javascript// Order final state
-const completedOrder = {
-  id: 42,
-  seller: "0xAlice...",
-  buyer: "0xBob...",
-  amountUSDC: "100.000000",
-  priceBOB: "500.0",
-  status: "Completed", // ✅
-  completedAt: "2025-07-04T10:35:00Z"
-};
-
-// Bob's wallet
-bobWallet.balance.USDC += 100; // ✅ Bob received USDC
-
-// Alice's bank account  
-aliceBank.balance.BOB += 500; // ✅ Alice received fiat
+// Create order without escrow
+uint256 orderId = tratoP2P.createSellOrder7702(
+    1000e6,  // 1000 USDC
+    50000,   // 50,000 units of fiat
+    block.timestamp + 1 days,
+    delegation
+);
 ```
 
-🔐 Security & Trust Mechanisms
-For Bob (Buyer Protection):
+#### Create Order with Traditional Escrow
 
-Escrow-like Security: Alice's USDC is "locked" via smart contract - she can't spend it elsewhere
-Atomic Settlement: USDC is only transferred if and only if payment is verified
-No Prepayment: Bob pays fiat directly to Alice's bank account (no intermediary)
-Transparency: All steps are visible on blockchain
+```solidity
+// Approve and create order with escrow
+usdcToken.approve(address(tratoP2P), 1000e6);
+uint256 orderId = tratoP2P.createSellOrder(
+    1000e6,  // 1000 USDC
+    50000,   // 50,000 units of fiat
+    block.timestamp + 1 days
+);
+```
 
-For Alice (Seller Protection):
+### For Buyers
 
-Payment Verification: Chainlink Functions confirms bank transfer before releasing USDC
-Non-Custodial: Her USDC never leaves her control until payment is confirmed
-Gasless: She doesn't pay gas fees for the final transfer (EIP-7702 magic)
-Reference Matching: System verifies correct payment reference
+```solidity
+// Accept order
+tratoP2P.acceptOrder(orderId, destinationDomain);
 
-Trust Requirements:
+// After making fiat payment, verify payment
+tratoP2P.verifyPayment(orderId, "payment_reference_id");
+```
 
-Banking API: Must accurately report payment status
-Chainlink Functions: Trusted oracle for off-chain verification
-Smart Contracts: Audited and verified on blockchain
-Payment Reference: Bob must include correct reference in bank transfer
+## Security Features
 
+### EIP-7702 Safety Mechanisms
 
-⏱️ Timeline Breakdown
-TimeActionActorStatusT+0minBob accepts orderBobOrder AcceptedT+1minBob receives payment instructionsSystemAwaiting PaymentT+5minBob completes bank transferBobPayment PendingT+7minChainlink verifies paymentChainlinkPayment VerifiedT+8minUSDC transferred to BobSmart ContractCompleted ✅
-Total Time: ~8 minutes (most time is bank processing)
+- **Time-Bounded Delegations**: All delegations include expiry timestamps
+- **Revocation Support**: Sellers can revoke delegations at any time via new 7702 transaction
+- **Single-Use Protection**: Salt prevents delegation replay attacks
+- **Contract-Specific**: Delegations are tied to specific contract addresses
 
-🚨 Failure Scenarios & Handling
-If Bob doesn't pay:
+### General Security
 
-Order expires after 30 minutes
-Alice's USDC remains in her wallet
-Bob can't claim the USDC
+- **Oracle Verification**: All payments verified through Chainlink before settlement
+- **Reentrancy Protection**: ReentrancyGuard on all state-changing functions
+- **Access Controls**: Role-based permissions for administrative functions
+- **Emergency Pause**: Circuit breaker for emergency situations
 
-If Bob pays wrong amount:
+## Cross-Chain Support
 
-Chainlink verification fails
-Order remains in "Accepted" state
-Alice keeps her USDC, Bob keeps his money
-Bob can pay the difference or cancel
+The platform supports USDC transfers across multiple chains via Circle CCTP:
 
-If Bob forgets payment reference:
+- Ethereum
+- Arbitrum
+- Optimism
+- Polygon
+- Avalanche
+- Base
 
-Bank transfer won't be matched to order
-Verification fails
-Trade doesn't execute
-Bob can contact support to resolve
+### Cross-Chain Flow
 
-If banking API is down:
+1. Contract receives USDC from seller (via AUTHCALL or escrow)
+2. Burns USDC on source chain via CCTP
+3. Mints equivalent USDC on destination chain
+4. Buyer receives USDC on their preferred chain
 
-Chainlink Functions will retry
-Order has extended deadline
-Manual verification possible as backup
+## Oracle Integration
 
-This flow ensures Bob gets exactly what he pays for, while Alice is protected from payment fraud - all without either party needing to trust a centralized exchange! 🎉
+### Supported Payment Methods
+
+- Bank transfers (ACH, wire, SEPA)
+- Mobile money (M-Pesa, GCash, etc.)
+- Digital wallets (PayPal, Venmo, etc.)
+- Credit/debit cards
+
+### Verification Process
+
+1. Buyer provides payment reference ID
+2. Chainlink oracle queries relevant APIs
+3. Oracle confirms payment status and amount
+4. Contract receives verification result
+5. Automatic settlement triggered on success
+
+## Development Roadmap
+
+### Phase 1: Core Implementation ✅
+- [x] Basic P2P trading functionality
+- [x] Chainlink oracle integration
+- [x] Circle CCTP integration
+
+### Phase 2: EIP-7702 Integration 🚧
+- [ ] EIP-7702 delegation handling
+- [ ] AUTHCALL implementation
+- [ ] Wallet integration for delegation signing
+- [ ] Comprehensive testing
+
+### Phase 3: Production Ready 📋
+- [ ] Multi-chain deployment
+- [ ] Advanced security audits
+- [ ] Mobile wallet support
+- [ ] Enhanced UI/UX
+
+### Phase 4: Advanced Features 📋
+- [ ] Partial order fills
+- [ ] Order books
+- [ ] Reputation system
+- [ ] Governance token
+
+## Testing
+
+```bash
+# Run unit tests
+npm run test
+
+# Run integration tests
+npm run test:integration
+
+# Run coverage
+npm run coverage
+
+# Test EIP-7702 functionality (requires compatible testnet)
+npm run test:eip7702
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Circle CCTP](https://developers.circle.com/stablecoin/docs/cctp-getting-started) for cross-chain infrastructure
+- [Chainlink](https://chain.link/) for reliable oracle services
+- [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) for account abstraction capabilities
+
+## Support
+
+For questions and support:
+- Create an issue in this repository
+- Join our Discord: [discord.gg/tratohechop2p](#)
+- Email: support@tratohechop2p.com
+
+---
+
+**Note**: EIP-7702 is currently in development. Production deployment should wait for mainnet activation and wallet support.
